@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="gcm_defaultSenderId" translatable="false">1009563458201</string>
+    <string name="google_api_key" translatable="false">AIzaSyDfOJWapMbAgzSkWAyPRlksewBBvq9J23E</string>
+    <string name="google_app_id" translatable="false">1:1009563458201:android:de05668505ada781d93608</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyDfOJWapMbAgzSkWAyPRlksewBBvq9J23E</string>
+    <string name="google_storage_bucket" translatable="false">stocksense-4bbaa.firebasestorage.app</string>
+    <string name="project_id" translatable="false">stocksense-4bbaa</string>
+</resources>
