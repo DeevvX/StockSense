@@ -495,9 +495,11 @@ fun IoTStatusCard() {
 
             Text(
                 text = "MQTT OK",
-                fontSize = 9.sp,
+                fontSize = 9.,
                 color = SSColors.TextMuted
             )
         }
     }
 }
+
+//actualizado 
