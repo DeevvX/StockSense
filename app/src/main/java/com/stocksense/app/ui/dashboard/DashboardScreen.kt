@@ -42,6 +42,8 @@ import java.util.Locale
 @Composable
 fun DashboardScreen(
     onLogout: () -> Unit,
+    onNavigateToAlertas: () -> Unit,
+    onNavigateToHistorial: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
@@ -112,10 +114,14 @@ fun DashboardScreen(
                         StatsRow(
                             totalProductos = viewModel.totalProductos,
                             totalAlertas = viewModel.totalAlertas,
-                            movimientosHoy = viewModel.movimientosHoy
+                            movimientosHoy = viewModel.movimientosHoy,
+                            onClickAlertas = onNavigateToAlertas
                         )
                         StockCard(productos = viewModel.todosLosProductos)
-                        MovimientosCard(movimientos = viewModel.ultimosMovimientos)
+                        MovimientosCard(
+                            movimientos = viewModel.ultimosMovimientos,
+                            onVerTodo = onNavigateToHistorial
+                        )
                         IoTStatusCard()
 
                         if (procesandoImagen) {
@@ -245,7 +251,12 @@ fun TopBar(userName: String, onLogout: () -> Unit) {
 
 // ── Stats Row ─────────────────────────────────────────────────────────
 @Composable
-fun StatsRow(totalProductos: Int, totalAlertas: Int, movimientosHoy: Int) {
+fun StatsRow(
+    totalProductos: Int,
+    totalAlertas: Int,
+    movimientosHoy: Int,
+    onClickAlertas: () -> Unit
+) {
     val stats = listOf(
         Triple(totalProductos.toString(), "Productos", SSColors.Cyan),
         Triple(totalAlertas.toString(), "Alertas", Color(0xFFFF3B5C)),
@@ -255,13 +266,24 @@ fun StatsRow(totalProductos: Int, totalAlertas: Int, movimientosHoy: Int) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        stats.forEach { (valor, label, color) ->
+        stats.forEachIndexed { index, (valor, label, color) ->
+            val esTarjetaAlertas = index == 1
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(SSColors.Card)
                     .border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp))
+                    .then(
+                        if (esTarjetaAlertas) {
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onClickAlertas() }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -397,7 +419,7 @@ fun ProductoRow(producto: Producto) {
 
 // ── Movimientos Card ──────────────────────────────────────────────────
 @Composable
-fun MovimientosCard(movimientos: List<Movimiento>) {
+fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -407,14 +429,28 @@ fun MovimientosCard(movimientos: List<Movimiento>) {
             .padding(14.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Text(
-                text = "ÚLTIMOS MOVIMIENTOS",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = SSColors.Text,
-                letterSpacing = 0.5.sp,
-                modifier = Modifier.padding(bottom = 10.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "ÚLTIMOS MOVIMIENTOS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SSColors.Text,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = "Ver todo",
+                    fontSize = 10.sp,
+                    color = SSColors.Cyan,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onVerTodo() }
+                )
+            }
 
             if (movimientos.isEmpty()) {
                 Text(
@@ -506,7 +542,7 @@ fun IoTStatusCard() {
             }
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "LOGITECH C920", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SSColors.Text)
+                Text(text = "ESP32-CAM", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SSColors.Text)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(modifier = Modifier.size(6.dp).background(SSColors.Green, CircleShape))
                     Text(text = "Conectado — Almacén Principal", fontSize = 9.sp, color = SSColors.Green)

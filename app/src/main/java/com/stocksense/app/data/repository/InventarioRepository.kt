@@ -90,9 +90,9 @@ class InventarioRepository(
                 child.getValue(Producto::class.java)?.copy(id = child.key ?: "")
             }
 
-            // 1) Coincidencia exacta normalizada
+            // 1 coincidencia exacta normalizada
             productos.firstOrNull { normalizar(it.nombre) == nombreBuscado }
-            // 2) Coincidencia parcial (uno contiene al otro)
+            // 2 coincidencia parcial (uno contiene al otro)
                 ?: productos.firstOrNull {
                     val n = normalizar(it.nombre)
                     n.contains(nombreBuscado) || nombreBuscado.contains(n)
@@ -135,6 +135,28 @@ class InventarioRepository(
                 .child(productoId)
                 .child("stock")
                 .setValue(nuevoStock.coerceAtLeast(0))
+                .await()
+
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Actualiza el umbral de stock mínimo configurable de un producto
+     */
+    suspend fun actualizarStockMinimo(
+        productoId: String,
+        nuevoStockMinimo: Int
+    ): Boolean {
+        return try {
+            if (productoId.isBlank()) return false
+
+            productosRef
+                .child(productoId)
+                .child("stockMinimo")
+                .setValue(nuevoStockMinimo.coerceAtLeast(0))
                 .await()
 
             true
