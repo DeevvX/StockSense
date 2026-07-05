@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -139,6 +141,55 @@ fun SSTextField(
     }
 }
 
+// ── Logo de Google con colores oficiales ────────────────────────────
+@Composable
+fun GoogleLogo(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = minOf(w, h) / 2f
+
+        // Fondo blanco circular
+        drawCircle(color = Color.White, radius = r, center = androidx.compose.ui.geometry.Offset(cx, cy))
+
+        // Colores Google
+        val blue   = Color(0xFF4285F4)
+        val red    = Color(0xFFEA4335)
+        val yellow = Color(0xFFFBBC05)
+        val green  = Color(0xFF34A853)
+
+        // Arco azul (derecha, cuadrante 4 → 1, aprox -30° a 90°)
+        drawArc(color = blue,   startAngle = -30f,  sweepAngle = 120f, useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = r * 0.38f),
+            topLeft = androidx.compose.ui.geometry.Offset(cx - r * 0.62f, cy - r * 0.62f),
+            size = androidx.compose.ui.geometry.Size(r * 1.24f, r * 1.24f))
+        // Arco rojo (arriba)
+        drawArc(color = red,    startAngle = -150f, sweepAngle = 120f, useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = r * 0.38f),
+            topLeft = androidx.compose.ui.geometry.Offset(cx - r * 0.62f, cy - r * 0.62f),
+            size = androidx.compose.ui.geometry.Size(r * 1.24f, r * 1.24f))
+        // Arco amarillo (abajo izquierda)
+        drawArc(color = yellow, startAngle = 90f,   sweepAngle = 90f,  useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = r * 0.38f),
+            topLeft = androidx.compose.ui.geometry.Offset(cx - r * 0.62f, cy - r * 0.62f),
+            size = androidx.compose.ui.geometry.Size(r * 1.24f, r * 1.24f))
+        // Arco verde (abajo derecha)
+        drawArc(color = green,  startAngle = 180f,  sweepAngle = -90f, useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = r * 0.38f),
+            topLeft = androidx.compose.ui.geometry.Offset(cx - r * 0.62f, cy - r * 0.62f),
+            size = androidx.compose.ui.geometry.Size(r * 1.24f, r * 1.24f))
+
+        // Barra horizontal azul (el palo de la G)
+        drawRect(
+            color = blue,
+            topLeft = androidx.compose.ui.geometry.Offset(cx, cy - r * 0.19f),
+            size = androidx.compose.ui.geometry.Size(r * 0.62f, r * 0.38f)
+        )
+    }
+}
+
 // ── Login Screen ─────────────────────────────────────────────────────
 @Composable
 fun LoginScreen(
@@ -148,6 +199,7 @@ fun LoginScreen(
 ) {
     val loginState by viewModel.loginState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
@@ -332,6 +384,7 @@ fun LoginScreen(
                             }
                         }
 
+                        // Divisor "o continúa con"
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -339,6 +392,35 @@ fun LoginScreen(
                             HorizontalDivider(modifier = Modifier.weight(1f), color = SSColors.CardBorder)
                             Text("o continúa con", fontSize = 10.sp, color = SSColors.TextMuted)
                             HorizontalDivider(modifier = Modifier.weight(1f), color = SSColors.CardBorder)
+                        }
+
+                        // Botón Google Sign-In
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF1A1F2E))
+                                .border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))
+                                .clickable(
+                                    enabled = !isLoading,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { viewModel.loginConGoogle(context) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                GoogleLogo(modifier = Modifier.size(20.dp))
+                                Text(
+                                    text = "Continuar con Google",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = SSColors.Text
+                                )
+                            }
                         }
 
                         Text(
