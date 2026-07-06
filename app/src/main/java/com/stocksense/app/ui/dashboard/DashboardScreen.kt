@@ -44,6 +44,7 @@ fun DashboardScreen(
     onLogout: () -> Unit,
     onNavigateToAlertas: () -> Unit,
     onNavigateToHistorial: () -> Unit,
+    onNavigateToGraficas: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
@@ -53,7 +54,6 @@ fun DashboardScreen(
     val movimientos by viewModel.movimientos.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
-    // Procesador de imágenes IoT con OpenAI Vision
     val procesadorViewModel: ProcesadorImagenesViewModel = viewModel(
         factory = ProcesadorImagenesViewModelFactory(BuildConfig.OPENAI_API_KEY)
     )
@@ -79,7 +79,11 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    TopBar(userName = userName, onLogout = onLogout)
+                    TopBar(
+                        userName = userName,
+                        onLogout = onLogout,
+                        onNavigateToGraficas = onNavigateToGraficas
+                    )
                     Spacer(Modifier.height(120.dp))
                     Icon(
                         imageVector = Icons.Filled.Search,
@@ -103,7 +107,11 @@ fun DashboardScreen(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    TopBar(userName = userName, onLogout = onLogout)
+                    TopBar(
+                        userName = userName,
+                        onLogout = onLogout,
+                        onNavigateToGraficas = onNavigateToGraficas
+                    )
 
                     Column(
                         modifier = Modifier
@@ -170,7 +178,11 @@ fun DashboardScreen(
 
 // ── Top Bar ──────────────────────────────────────────────────────────
 @Composable
-fun TopBar(userName: String, onLogout: () -> Unit) {
+fun TopBar(
+    userName: String,
+    onLogout: () -> Unit,
+    onNavigateToGraficas: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -214,24 +226,48 @@ fun TopBar(userName: String, onLogout: () -> Unit) {
             }
         }
 
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1A1F2E))
-                .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onLogout() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ExitToApp,
-                contentDescription = "Cerrar sesión",
-                tint = SSColors.TextMuted,
-                modifier = Modifier.size(16.dp)
-            )
+        // Botones del TopBar
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Botón Gráficas
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1F2E))
+                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onNavigateToGraficas() },
+                contentAlignment = Alignment.Center
+            ) {
+                // Ícono de gráfica usando texto unicode
+                Text(
+                    text = "📊",
+                    fontSize = 16.sp
+                )
+            }
+
+            // Botón Logout
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1F2E))
+                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onLogout() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ExitToApp,
+                    contentDescription = "Cerrar sesión",
+                    tint = SSColors.TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 
@@ -280,9 +316,7 @@ fun StatsRow(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { onClickAlertas() }
-                        } else {
-                            Modifier
-                        }
+                        } else Modifier
                     )
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
@@ -323,19 +357,13 @@ fun StockCard(productos: List<Producto>) {
                     letterSpacing = 0.5.sp
                 )
             }
-
             HorizontalDivider(color = SSColors.CardBorder)
-
             if (productos.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "Sin productos en el catálogo",
-                        fontSize = 12.sp,
-                        color = SSColors.TextMuted
-                    )
+                    Text(text = "Sin productos en el catálogo", fontSize = 12.sp, color = SSColors.TextMuted)
                 }
             } else {
                 productos.forEachIndexed { index, producto ->
@@ -352,9 +380,7 @@ fun ProductoRow(producto: Producto) {
     val barColor = if (producto.stockBajo) Color(0xFFFF3B5C) else SSColors.Green
     val textColor = if (producto.stockBajo) Color(0xFFFF3B5C) else SSColors.Text
 
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -369,22 +395,11 @@ fun ProductoRow(producto: Producto) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = "${producto.stock} ${producto.unidad}",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = barColor
-            )
+            Text(text = "${producto.stock} ${producto.unidad}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = barColor)
         }
-
         Spacer(Modifier.height(6.dp))
-
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(SSColors.CardBorder)
+            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(SSColors.CardBorder)
         ) {
             Box(
                 modifier = Modifier
@@ -394,24 +409,11 @@ fun ProductoRow(producto: Producto) {
                     .background(barColor)
             )
         }
-
         if (producto.stockBajo) {
             Spacer(Modifier.height(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = null,
-                    tint = Color(0xFFFF3B5C),
-                    modifier = Modifier.size(10.dp)
-                )
-                Text(
-                    text = "STOCK BAJO — mínimo ${producto.stockMinimo} ${producto.unidad}",
-                    fontSize = 9.sp,
-                    color = Color(0xFFFF3B5C)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFF3B5C), modifier = Modifier.size(10.dp))
+                Text(text = "STOCK BAJO — mínimo ${producto.stockMinimo} ${producto.unidad}", fontSize = 9.sp, color = Color(0xFFFF3B5C))
             }
         }
     }
@@ -434,13 +436,7 @@ fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "ÚLTIMOS MOVIMIENTOS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SSColors.Text,
-                    letterSpacing = 0.5.sp
-                )
+                Text(text = "ÚLTIMOS MOVIMIENTOS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SSColors.Text, letterSpacing = 0.5.sp)
                 Text(
                     text = "Ver todo",
                     fontSize = 10.sp,
@@ -451,51 +447,28 @@ fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
                     ) { onVerTodo() }
                 )
             }
-
             if (movimientos.isEmpty()) {
-                Text(
-                    text = "Sin movimientos registrados",
-                    fontSize = 12.sp,
-                    color = SSColors.TextMuted
-                )
+                Text(text = "Sin movimientos registrados", fontSize = 12.sp, color = SSColors.TextMuted)
             } else {
                 movimientos.forEachIndexed { index, mov ->
                     val isEntrada = mov.esEntrada
                     val color = if (isEntrada) SSColors.Green else Color(0xFFFF3B5C)
                     val icon = if (isEntrada) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp
-
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(color.copy(alpha = 0.15f)),
+                            modifier = Modifier.size(28.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
                         }
-
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = mov.productoNombre,
-                                fontSize = 11.sp,
-                                color = SSColors.Text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${formatearFecha(mov.timestamp)} · ${mov.tipo}",
-                                fontSize = 9.sp,
-                                color = SSColors.TextMuted
-                            )
+                            Text(text = mov.productoNombre, fontSize = 11.sp, color = SSColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(text = "${formatearFecha(mov.timestamp)} · ${mov.tipo}", fontSize = 9.sp, color = SSColors.TextMuted)
                         }
-
                         Text(
                             text = "${if (mov.cantidad > 0 && isEntrada) "+" else ""}${mov.cantidad}",
                             fontSize = 13.sp,
@@ -503,7 +476,6 @@ fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
                             color = color
                         )
                     }
-
                     if (index < movimientos.size - 1) HorizontalDivider(color = SSColors.CardBorder)
                 }
             }
@@ -522,33 +494,20 @@ fun IoTStatusCard() {
             .border(1.dp, SSColors.CyanGlow, RoundedCornerShape(14.dp))
             .padding(14.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SSColors.CyanDim),
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(SSColors.CyanDim),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = SSColors.Cyan,
-                    modifier = Modifier.size(22.dp)
-                )
+                Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.Cyan, modifier = Modifier.size(22.dp))
             }
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "ESP32-CAM", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SSColors.Text)
+                Text(text = "LOGITECH C920", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SSColors.Text)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(modifier = Modifier.size(6.dp).background(SSColors.Green, CircleShape))
                     Text(text = "Conectado — Almacén Principal", fontSize = 9.sp, color = SSColors.Green)
                 }
             }
-
             Text(text = "MQTT OK", fontSize = 9.sp, color = SSColors.TextMuted)
         }
     }
@@ -557,7 +516,5 @@ fun IoTStatusCard() {
 private fun formatearFecha(timestamp: Long): String {
     return try {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
-    } catch (e: Exception) {
-        "--:--"
-    }
+    } catch (e: Exception) { "--:--" }
 }

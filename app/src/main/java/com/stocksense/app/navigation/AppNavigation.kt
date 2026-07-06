@@ -8,6 +8,7 @@ import androidx.navigation.compose.rememberNavController
 import com.google.firebase.auth.FirebaseAuth
 import com.stocksense.app.ui.alertas.AlertasScreen
 import com.stocksense.app.ui.dashboard.DashboardScreen
+import com.stocksense.app.ui.graficas.GraficasScreen
 import com.stocksense.app.ui.historial.HistorialScreen
 import com.stocksense.app.ui.login.LoginScreen
 import com.stocksense.app.ui.login.RegisterScreen
@@ -18,6 +19,7 @@ object AppRoutes {
     const val DASHBOARD = "dashboard"
     const val ALERTAS   = "alertas"
     const val HISTORIAL = "historial"
+    const val GRAFICAS  = "graficas"
 }
 
 @Composable
@@ -68,24 +70,23 @@ fun AppNavigation(
                 },
                 onNavigateToHistorial = {
                     navController.navigate(AppRoutes.HISTORIAL)
+                },
+                onNavigateToGraficas = {
+                    navController.navigate(AppRoutes.GRAFICAS)
                 }
             )
         }
 
         composable(AppRoutes.ALERTAS) {
-            AlertasScreen(
-                onBack = {
-                    navController.popBackStack()
-                }
-            )
+            AlertasScreen(onBack = { navController.popBackStack() })
         }
 
         composable(AppRoutes.HISTORIAL) {
-            HistorialScreen(
-                onBack = {
-                    navController.popBackStack()
-                }
-            )
+            HistorialScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(AppRoutes.GRAFICAS) {
+            GraficasScreen(onBack = { navController.popBackStack() })
         }
     }
 }
