@@ -14,6 +14,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 data class StockPorProducto(
     val nombre: String,
@@ -37,7 +39,17 @@ data class DistribucionCategoria(
 data class StockHistorico(
     val productoNombre: String,
     val color: Long,
-    val puntos: List<Pair<String, Float>> // fecha -> stock en ese momento
+    val puntos: List<Pair<String, Float>>
+)
+
+data class PrediccionProducto(
+    val productoNombre: String,
+    val productoId: String,
+    val stockActual: Int,
+    val unidadesPredictasSemana: Int,
+    val diasHastaAgotarse: Int,   // -1 = no se agota en el periodo
+    val confianza: Float,         // 0.0 a 1.0
+    val color: Long
 )
 
 class GraficasViewModel : ViewModel() {
@@ -61,6 +73,9 @@ class GraficasViewModel : ViewModel() {
 
     private val _stockHistorico = MutableStateFlow<List<StockHistorico>>(emptyList())
     val stockHistorico: StateFlow<List<StockHistorico>> = _stockHistorico.asStateFlow()
+
+    private val _predicciones = MutableStateFlow<List<PrediccionProducto>>(emptyList())
+    val predicciones: StateFlow<List<PrediccionProducto>> = _predicciones.asStateFlow()
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -107,12 +122,13 @@ class GraficasViewModel : ViewModel() {
         procesarMovimientosPorDia()
         procesarDistribucion()
         procesarStockHistorico()
+        procesarPredicciones()
     }
 
     private fun procesarStockActual() {
         _stockPorProducto.value = productos.mapIndexed { index, producto ->
             StockPorProducto(
-                nombre = producto.nombre.split(" ").first(), // primera palabra para que quepa
+                nombre = producto.nombre.split(" ").first(),
                 stock = producto.stock,
                 color = coloresGrafica[index % coloresGrafica.size]
             )
@@ -164,8 +180,6 @@ class GraficasViewModel : ViewModel() {
         val calendar = Calendar.getInstance()
 
         _stockHistorico.value = productos.mapIndexed { index, producto ->
-            // Reconstruimos el stock histórico partiendo del stock actual
-            // y aplicando movimientos en reversa
             val movsProd = movimientos
                 .filter { it.productoId == producto.id }
                 .sortedByDescending { it.timestamp }
@@ -173,11 +187,9 @@ class GraficasViewModel : ViewModel() {
             val puntos = mutableListOf<Pair<String, Float>>()
             var stockReconstruido = producto.stock.toFloat()
 
-            // Stock actual (hoy)
             val hoy = Calendar.getInstance()
             puntos.add(0, sdf.format(hoy.time) to stockReconstruido)
 
-            // Últimos 6 días en reversa
             for (diasAtras in 1..6) {
                 calendar.time = Date()
                 calendar.add(Calendar.DAY_OF_YEAR, -diasAtras)
@@ -187,14 +199,10 @@ class GraficasViewModel : ViewModel() {
                 }.timeInMillis
                 val fechaFin = fechaInicio + 86_400_000L - 1L
 
-                // Deshacer los movimientos de ese día para reconstruir el stock anterior
                 val movsDia = movsProd.filter { it.timestamp in fechaInicio..fechaFin }
                 movsDia.forEach { mov ->
-                    if (mov.tipo.lowercase() == "salida") {
-                        stockReconstruido += mov.cantidad // deshacer salida = sumar
-                    } else {
-                        stockReconstruido -= mov.cantidad // deshacer entrada = restar
-                    }
+                    if (mov.tipo.lowercase() == "salida") stockReconstruido += mov.cantidad
+                    else stockReconstruido -= mov.cantidad
                 }
                 stockReconstruido = stockReconstruido.coerceAtLeast(0f)
                 puntos.add(0, sdf.format(Date(fechaInicio)) to stockReconstruido)
@@ -205,6 +213,98 @@ class GraficasViewModel : ViewModel() {
                 color = coloresGrafica[index % coloresGrafica.size],
                 puntos = puntos
             )
+        }
+    }
+
+    /**
+     * Predicción de demanda usando regresión lineal simple (mínimos cuadrados)
+     * sobre los últimos 30 días de salidas por producto.
+     *
+     * La regresión lineal ajusta una línea y = a + b*x donde:
+     * - x = día (0 a 29)
+     * - y = unidades vendidas ese día
+     * - b = pendiente (tendencia de consumo: positiva = crece, negativa = decrece)
+     * - a = intercepto
+     *
+     * Con eso proyectamos las salidas esperadas para los próximos 7 días.
+     * La confianza se basa en qué tan bien se ajusta la línea a los datos reales (R²).
+     */
+    private fun procesarPredicciones() {
+        if (productos.isEmpty()) return
+
+        val ahora = System.currentTimeMillis()
+        val hace30Dias = ahora - (30L * 24 * 60 * 60 * 1000)
+
+        _predicciones.value = productos.mapIndexed { index, producto ->
+            val movsProd = movimientos.filter {
+                it.productoId == producto.id &&
+                        it.tipo.lowercase() == "salida" &&
+                        it.timestamp >= hace30Dias
+            }
+
+            // Agrupar salidas por día (día 0 = hace 30 días, día 29 = hoy)
+            val salidasPorDia = DoubleArray(30) { 0.0 }
+            movsProd.forEach { mov ->
+                val diasDesdeInicio = ((mov.timestamp - hace30Dias) / (24 * 60 * 60 * 1000)).toInt()
+                if (diasDesdeInicio in 0..29) {
+                    salidasPorDia[diasDesdeInicio] = salidasPorDia[diasDesdeInicio] + mov.cantidad
+                }
+            }
+
+            val prediccion = if (movsProd.isEmpty()) {
+                // Sin historial: predicción conservadora basada en el stock mínimo
+                PrediccionProducto(
+                    productoNombre = producto.nombre.split(" ").first(),
+                    productoId = producto.id,
+                    stockActual = producto.stock,
+                    unidadesPredictasSemana = 0,
+                    diasHastaAgotarse = -1,
+                    confianza = 0f,
+                    color = coloresGrafica[index % coloresGrafica.size]
+                )
+            } else {
+                // Regresión lineal por mínimos cuadrados
+                val n = 30.0
+                val sumX = (0 until 30).sumOf { it.toDouble() }
+                val sumY = salidasPorDia.sum()
+                val sumXY = (0 until 30).sumOf { x -> x * salidasPorDia[x] }
+                val sumX2 = (0 until 30).sumOf { x -> (x * x).toDouble() }
+
+                val pendiente = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+                val intercepto = (sumY - pendiente * sumX) / n
+
+                // Proyectar los próximos 7 días (días 30 a 36)
+                val unidadesProxSemana = (30 until 37).sumOf { x ->
+                    (intercepto + pendiente * x).coerceAtLeast(0.0)
+                }.roundToInt()
+
+                // Calcular R² (coeficiente de determinación) para la confianza
+                val mediaY = sumY / n
+                val ssTot = salidasPorDia.sumOf { y -> (y - mediaY) * (y - mediaY) }
+                val ssRes = (0 until 30).sumOf { x ->
+                    val yPred = intercepto + pendiente * x
+                    val diff = salidasPorDia[x] - yPred
+                    diff * diff
+                }
+                val r2 = if (ssTot > 0) (1 - ssRes / ssTot).coerceIn(0.0, 1.0) else 0.0
+
+                // Días hasta agotarse con el ritmo de consumo actual
+                val consumoDiario = (sumY / n).coerceAtLeast(0.0)
+                val diasHastaAgotarse = if (consumoDiario > 0) {
+                    (producto.stock / consumoDiario).roundToInt()
+                } else -1
+
+                PrediccionProducto(
+                    productoNombre = producto.nombre.split(" ").first(),
+                    productoId = producto.id,
+                    stockActual = producto.stock,
+                    unidadesPredictasSemana = unidadesProxSemana,
+                    diasHastaAgotarse = diasHastaAgotarse,
+                    confianza = r2.toFloat(),
+                    color = coloresGrafica[index % coloresGrafica.size]
+                )
+            }
+            prediccion
         }
     }
 }

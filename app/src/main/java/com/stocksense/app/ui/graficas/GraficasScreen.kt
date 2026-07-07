@@ -43,6 +43,7 @@ fun GraficasScreen(
     val stockPorProducto by viewModel.stockPorProducto.collectAsState()
     val movimientosPorDia by viewModel.movimientosPorDia.collectAsState()
     val distribucionCategorias by viewModel.distribucionCategorias.collectAsState()
+    val predicciones by viewModel.predicciones.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize().background(bgGradient)) {
@@ -99,6 +100,7 @@ fun GraficasScreen(
                     GraficaStockActual(stockPorProducto = stockPorProducto)
                     GraficaMovimientosPorDia(movimientosPorDia = movimientosPorDia)
                     GraficaDistribucionCategorias(distribucion = distribucionCategorias)
+                    GraficaPrediccionDemanda(predicciones = predicciones)
                     Spacer(Modifier.height(16.dp))
                 }
             }
@@ -279,6 +281,155 @@ fun GraficaDistribucionCategorias(distribucion: List<DistribucionCategoria>) {
                             .background(Color(cat.color))
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun GraficaPrediccionDemanda(predicciones: List<PrediccionProducto>) {
+    GraficaCard(titulo = "PREDICCIÓN DE DEMANDA — PRÓXIMOS 7 DÍAS") {
+        if (predicciones.isEmpty()) {
+            EstadoVacio("Sin datos para calcular predicción")
+            return@GraficaCard
+        }
+
+        predicciones.forEachIndexed { index, pred ->
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(modifier = Modifier.size(8.dp).background(Color(pred.color), CircleShape))
+                        Text(
+                            text = pred.productoNombre,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SSColors.Text
+                        )
+                    }
+                    val confianzaColor = when {
+                        pred.confianza >= 0.7f -> SSColors.Green
+                        pred.confianza >= 0.4f -> Color(0xFFFFD60A)
+                        else -> SSColors.TextMuted
+                    }
+                    val confianzaLabel = when {
+                        pred.confianza >= 0.7f -> "Alta"
+                        pred.confianza >= 0.4f -> "Media"
+                        pred.confianza > 0f -> "Baja"
+                        else -> "Sin datos"
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(confianzaColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "Confianza $confianzaLabel",
+                            fontSize = 9.sp,
+                            color = confianzaColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(6.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0D1525))
+                        .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                        .padding(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${pred.unidadesPredictasSemana}",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(pred.color)
+                            )
+                            Text(
+                                text = "uds. predichas\npróx. 7 días",
+                                fontSize = 9.sp,
+                                color = SSColors.TextMuted,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Box(modifier = Modifier.width(1.dp).height(48.dp).background(SSColors.CardBorder))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${pred.stockActual}",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black,
+                                color = SSColors.Text
+                            )
+                            Text(
+                                text = "en stock\nahorita",
+                                fontSize = 9.sp,
+                                color = SSColors.TextMuted,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Box(modifier = Modifier.width(1.dp).height(48.dp).background(SSColors.CardBorder))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val diasColor = when {
+                                pred.diasHastaAgotarse == -1 -> SSColors.Green
+                                pred.diasHastaAgotarse <= 7 -> Color(0xFFFF3B5C)
+                                pred.diasHastaAgotarse <= 14 -> Color(0xFFFFD60A)
+                                else -> SSColors.Green
+                            }
+                            Text(
+                                text = if (pred.diasHastaAgotarse == -1) "∞" else "${pred.diasHastaAgotarse}",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black,
+                                color = diasColor
+                            )
+                            Text(
+                                text = if (pred.diasHastaAgotarse == -1) "sin riesgo\nde agotarse" else "días hasta\nagotarse",
+                                fontSize = 9.sp,
+                                color = SSColors.TextMuted,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                if (pred.diasHastaAgotarse in 1..7) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(text = "⚠", fontSize = 10.sp, color = Color(0xFFFF3B5C))
+                        Text(
+                            text = "Se agotará en ${pred.diasHastaAgotarse} días al ritmo actual",
+                            fontSize = 10.sp,
+                            color = Color(0xFFFF3B5C)
+                        )
+                    }
+                }
+            }
+
+            if (index < predicciones.size - 1) {
+                HorizontalDivider(color = SSColors.CardBorder)
             }
         }
     }
