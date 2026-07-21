@@ -33,6 +33,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.stocksense.app.BuildConfig
 import com.stocksense.app.data.model.Movimiento
 import com.stocksense.app.data.model.Producto
+import com.stocksense.app.ui.chatbot.ChatbotEntradaDialog
 import com.stocksense.app.ui.login.SSColors
 import com.stocksense.app.ui.login.bgGradient
 import java.text.SimpleDateFormat
@@ -45,6 +46,7 @@ fun DashboardScreen(
     onNavigateToAlertas: () -> Unit,
     onNavigateToHistorial: () -> Unit,
     onNavigateToGraficas: () -> Unit,
+    onNavigateToReportes: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
@@ -60,11 +62,11 @@ fun DashboardScreen(
     val procesandoImagen by procesadorViewModel.procesando.collectAsState()
     val ultimoResultadoIA by procesadorViewModel.ultimoResultado.collectAsState()
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bgGradient)
-    ) {
+    // Estado del diálogo del chatbot de entradas — se abre desde el FAB,
+    // no es una ruta de navegación.
+    var mostrarChatbotEntrada by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize().background(bgGradient)) {
         when {
             isLoading -> {
                 CircularProgressIndicator(
@@ -73,7 +75,6 @@ fun DashboardScreen(
                     strokeWidth = 2.dp
                 )
             }
-
             productos.isEmpty() && movimientos.isEmpty() -> {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -82,41 +83,25 @@ fun DashboardScreen(
                     TopBar(
                         userName = userName,
                         onLogout = onLogout,
-                        onNavigateToGraficas = onNavigateToGraficas
+                        onNavigateToGraficas = onNavigateToGraficas,
+                        onNavigateToReportes = onNavigateToReportes
                     )
                     Spacer(Modifier.height(120.dp))
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = null,
-                        tint = SSColors.TextMuted,
-                        modifier = Modifier.size(52.dp)
-                    )
+                    Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.TextMuted, modifier = Modifier.size(52.dp))
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = "Sin datos aún\nAgrega productos en Firebase",
-                        color = SSColors.TextMuted,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    Text(text = "Sin datos aún\nAgrega productos en Firebase", color = SSColors.TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
                 }
             }
-
             else -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                ) {
+                Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     TopBar(
                         userName = userName,
                         onLogout = onLogout,
-                        onNavigateToGraficas = onNavigateToGraficas
+                        onNavigateToGraficas = onNavigateToGraficas,
+                        onNavigateToReportes = onNavigateToReportes
                     )
-
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         StatsRow(
@@ -126,30 +111,16 @@ fun DashboardScreen(
                             onClickAlertas = onNavigateToAlertas
                         )
                         StockCard(productos = viewModel.todosLosProductos)
-                        MovimientosCard(
-                            movimientos = viewModel.ultimosMovimientos,
-                            onVerTodo = onNavigateToHistorial
-                        )
+                        MovimientosCard(movimientos = viewModel.ultimosMovimientos, onVerTodo = onNavigateToHistorial)
                         IoTStatusCard()
 
                         if (procesandoImagen) {
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(SSColors.CyanDim)
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.CyanDim).padding(12.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = SSColors.Cyan,
-                                        strokeWidth = 2.dp,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    CircularProgressIndicator(color = SSColors.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                                     Text("Procesando imagen con IA...", fontSize = 11.sp, color = SSColors.Cyan)
                                 }
                             }
@@ -157,12 +128,7 @@ fun DashboardScreen(
 
                         ultimoResultadoIA?.let { resultado ->
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(SSColors.Card)
-                                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp))
-                                    .padding(12.dp)
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp)).padding(12.dp)
                             ) {
                                 Text(resultado, fontSize = 11.sp, color = SSColors.TextMuted)
                             }
@@ -173,151 +139,100 @@ fun DashboardScreen(
                 }
             }
         }
+
+        // ── Botón flotante para el chatbot de entradas ──────────────
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+                .size(58.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(SSColors.Cyan, SSColors.Purple)))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { mostrarChatbotEntrada = true },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "🤖", fontSize = 24.sp)
+        }
+    }
+
+    if (mostrarChatbotEntrada) {
+        ChatbotEntradaDialog(
+            openAiApiKey = BuildConfig.OPENAI_API_KEY,
+            onDismiss = { mostrarChatbotEntrada = false }
+        )
     }
 }
 
-// ── Top Bar ──────────────────────────────────────────────────────────
 @Composable
 fun TopBar(
     userName: String,
     onLogout: () -> Unit,
-    onNavigateToGraficas: () -> Unit
+    onNavigateToGraficas: () -> Unit,
+    onNavigateToReportes: () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF080E1A))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().background(Color(0xFF080E1A)).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SSColors.CyanDim)
-                    .border(1.dp, SSColors.CyanGlow, RoundedCornerShape(10.dp)),
+                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(SSColors.CyanDim).border(1.dp, SSColors.CyanGlow, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ShoppingCart,
-                    contentDescription = null,
-                    tint = SSColors.Cyan,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(imageVector = Icons.Filled.ShoppingCart, contentDescription = null, tint = SSColors.Cyan, modifier = Modifier.size(20.dp))
             }
             Column {
-                Text(
-                    text = "StockSense",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Black,
-                    color = SSColors.Cyan,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "Hola, $userName",
-                    fontSize = 10.sp,
-                    color = SSColors.TextMuted
-                )
+                Text(text = "StockSense", fontSize = 14.sp, fontWeight = FontWeight.Black, color = SSColors.Cyan, letterSpacing = 1.sp)
+                Text(text = "Hola, $userName", fontSize = 10.sp, color = SSColors.TextMuted)
             }
         }
 
-        // Botones del TopBar
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Botón Reportes
+            Box(
+                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigateToReportes() },
+                contentAlignment = Alignment.Center
+            ) { Text(text = "📄", fontSize = 16.sp) }
+
             // Botón Gráficas
             Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1A1F2E))
-                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onNavigateToGraficas() },
+                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigateToGraficas() },
                 contentAlignment = Alignment.Center
-            ) {
-                // Ícono de gráfica usando texto unicode
-                Text(
-                    text = "📊",
-                    fontSize = 16.sp
-                )
-            }
+            ) { Text(text = "📊", fontSize = 16.sp) }
 
             // Botón Logout
             Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1A1F2E))
-                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onLogout() },
+                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLogout() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ExitToApp,
-                    contentDescription = "Cerrar sesión",
-                    tint = SSColors.TextMuted,
-                    modifier = Modifier.size(16.dp)
-                )
+                Icon(imageVector = Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión", tint = SSColors.TextMuted, modifier = Modifier.size(16.dp))
             }
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(
-                Brush.horizontalGradient(
-                    listOf(Color.Transparent, SSColors.CyanGlow, Color.Transparent)
-                )
-            )
-    )
-
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, SSColors.CyanGlow, Color.Transparent))))
     Spacer(Modifier.height(14.dp))
 }
 
-// ── Stats Row ─────────────────────────────────────────────────────────
 @Composable
-fun StatsRow(
-    totalProductos: Int,
-    totalAlertas: Int,
-    movimientosHoy: Int,
-    onClickAlertas: () -> Unit
-) {
+fun StatsRow(totalProductos: Int, totalAlertas: Int, movimientosHoy: Int, onClickAlertas: () -> Unit) {
     val stats = listOf(
         Triple(totalProductos.toString(), "Productos", SSColors.Cyan),
         Triple(totalAlertas.toString(), "Alertas", Color(0xFFFF3B5C)),
         Triple(movimientosHoy.toString(), "Hoy", SSColors.Green),
     )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         stats.forEachIndexed { index, (valor, label, color) ->
-            val esTarjetaAlertas = index == 1
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(SSColors.Card)
-                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp))
-                    .then(
-                        if (esTarjetaAlertas) {
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { onClickAlertas() }
-                        } else Modifier
-                    )
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp))
+                    .then(if (index == 1) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClickAlertas() } else Modifier)
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -330,39 +245,17 @@ fun StatsRow(
     }
 }
 
-// ── Stock Card ────────────────────────────────────────────────────────
 @Composable
 fun StockCard(productos: List<Producto>) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SSColors.Card)
-            .border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))) {
         Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(modifier = Modifier.size(8.dp).background(Color(0xFFFF3B5C), CircleShape))
-                Text(
-                    text = "STOCK EN TIEMPO REAL",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SSColors.Text,
-                    letterSpacing = 0.5.sp
-                )
+                Text(text = "STOCK EN TIEMPO REAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SSColors.Text, letterSpacing = 0.5.sp)
             }
             HorizontalDivider(color = SSColors.CardBorder)
             if (productos.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                     Text(text = "Sin productos en el catálogo", fontSize = 12.sp, color = SSColors.TextMuted)
                 }
             } else {
@@ -379,35 +272,14 @@ fun StockCard(productos: List<Producto>) {
 fun ProductoRow(producto: Producto) {
     val barColor = if (producto.stockBajo) Color(0xFFFF3B5C) else SSColors.Green
     val textColor = if (producto.stockBajo) Color(0xFFFF3B5C) else SSColors.Text
-
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = producto.nombre,
-                fontSize = 11.sp,
-                color = textColor,
-                fontWeight = if (producto.stockBajo) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(text = producto.nombre, fontSize = 11.sp, color = textColor, fontWeight = if (producto.stockBajo) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(text = "${producto.stock} ${producto.unidad}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = barColor)
         }
         Spacer(Modifier.height(6.dp))
-        Box(
-            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(SSColors.CardBorder)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(producto.porcentajeStock)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(barColor)
-            )
+        Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(SSColors.CardBorder)) {
+            Box(modifier = Modifier.fillMaxWidth(producto.porcentajeStock).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(barColor))
         }
         if (producto.stockBajo) {
             Spacer(Modifier.height(4.dp))
@@ -419,33 +291,13 @@ fun ProductoRow(producto: Producto) {
     }
 }
 
-// ── Movimientos Card ──────────────────────────────────────────────────
 @Composable
 fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SSColors.Card)
-            .border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))
-            .padding(14.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp)).padding(14.dp)) {
+        Column {
+            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "ÚLTIMOS MOVIMIENTOS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SSColors.Text, letterSpacing = 0.5.sp)
-                Text(
-                    text = "Ver todo",
-                    fontSize = 10.sp,
-                    color = SSColors.Cyan,
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onVerTodo() }
-                )
+                Text(text = "Ver todo", fontSize = 10.sp, color = SSColors.Cyan, modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onVerTodo() })
             }
             if (movimientos.isEmpty()) {
                 Text(text = "Sin movimientos registrados", fontSize = 12.sp, color = SSColors.TextMuted)
@@ -454,27 +306,15 @@ fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
                     val isEntrada = mov.esEntrada
                     val color = if (isEntrada) SSColors.Green else Color(0xFFFF3B5C)
                     val icon = if (isEntrada) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier.size(28.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
                             Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = mov.productoNombre, fontSize = 11.sp, color = SSColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(text = "${formatearFecha(mov.timestamp)} · ${mov.tipo}", fontSize = 9.sp, color = SSColors.TextMuted)
                         }
-                        Text(
-                            text = "${if (mov.cantidad > 0 && isEntrada) "+" else ""}${mov.cantidad}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = color
-                        )
+                        Text(text = "${if (mov.cantidad > 0 && isEntrada) "+" else ""}${mov.cantidad}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
                     }
                     if (index < movimientos.size - 1) HorizontalDivider(color = SSColors.CardBorder)
                 }
@@ -483,22 +323,11 @@ fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
     }
 }
 
-// ── IoT Status Card ───────────────────────────────────────────────────
 @Composable
 fun IoTStatusCard() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF0D1F2D), Color(0xFF0A1628))))
-            .border(1.dp, SSColors.CyanGlow, RoundedCornerShape(14.dp))
-            .padding(14.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFF0D1F2D), Color(0xFF0A1628)))).border(1.dp, SSColors.CyanGlow, RoundedCornerShape(14.dp)).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(SSColors.CyanDim),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(SSColors.CyanDim), contentAlignment = Alignment.Center) {
                 Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.Cyan, modifier = Modifier.size(22.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
@@ -514,7 +343,6 @@ fun IoTStatusCard() {
 }
 
 private fun formatearFecha(timestamp: Long): String {
-    return try {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
-    } catch (e: Exception) { "--:--" }
+    return try { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp)) }
+    catch (e: Exception) { "--:--" }
 }

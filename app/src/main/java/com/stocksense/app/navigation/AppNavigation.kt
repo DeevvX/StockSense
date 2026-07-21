@@ -12,6 +12,7 @@ import com.stocksense.app.ui.graficas.GraficasScreen
 import com.stocksense.app.ui.historial.HistorialScreen
 import com.stocksense.app.ui.login.LoginScreen
 import com.stocksense.app.ui.login.RegisterScreen
+import com.stocksense.app.ui.reportes.ReportesScreen
 
 object AppRoutes {
     const val LOGIN     = "login"
@@ -20,6 +21,7 @@ object AppRoutes {
     const val ALERTAS   = "alertas"
     const val HISTORIAL = "historial"
     const val GRAFICAS  = "graficas"
+    const val REPORTES  = "reportes"
 }
 
 @Composable
@@ -38,9 +40,7 @@ fun AppNavigation(
                         popUpTo(AppRoutes.LOGIN) { inclusive = true }
                     }
                 },
-                onNavigateToRegister = {
-                    navController.navigate(AppRoutes.REGISTER)
-                }
+                onNavigateToRegister = { navController.navigate(AppRoutes.REGISTER) }
             )
         }
 
@@ -51,9 +51,7 @@ fun AppNavigation(
                         popUpTo(AppRoutes.LOGIN) { inclusive = true }
                     }
                 },
-                onNavigateToLogin = {
-                    navController.popBackStack()
-                }
+                onNavigateToLogin = { navController.popBackStack() }
             )
         }
 
@@ -65,15 +63,10 @@ fun AppNavigation(
                         popUpTo(AppRoutes.DASHBOARD) { inclusive = true }
                     }
                 },
-                onNavigateToAlertas = {
-                    navController.navigate(AppRoutes.ALERTAS)
-                },
-                onNavigateToHistorial = {
-                    navController.navigate(AppRoutes.HISTORIAL)
-                },
-                onNavigateToGraficas = {
-                    navController.navigate(AppRoutes.GRAFICAS)
-                }
+                onNavigateToAlertas = { navController.navigate(AppRoutes.ALERTAS) },
+                onNavigateToHistorial = { navController.navigate(AppRoutes.HISTORIAL) },
+                onNavigateToGraficas = { navController.navigate(AppRoutes.GRAFICAS) },
+                onNavigateToReportes = { navController.navigate(AppRoutes.REPORTES) }
             )
         }
 
@@ -87,6 +80,10 @@ fun AppNavigation(
 
         composable(AppRoutes.GRAFICAS) {
             GraficasScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(AppRoutes.REPORTES) {
+            ReportesScreen(onBack = { navController.popBackStack() })
         }
     }
 }

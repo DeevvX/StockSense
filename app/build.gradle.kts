@@ -114,4 +114,5 @@ dependencies {
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
     implementation("com.patrykandpatrick.vico:compose-m3:1.13.1")
+
 }
