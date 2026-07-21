@@ -65,7 +65,8 @@ val movimientosMuestra = listOf(
 // ── Dashboard Screen ─────────────────────────────────────────────────
 @Composable
 fun DashboardScreen(
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToReportes: () -> Unit
 ) {
     val auth = FirebaseAuth.getInstance()
     val userName = auth.currentUser?.displayName?.split(" ")?.firstOrNull() ?: "Usuario"
@@ -85,7 +86,7 @@ fun DashboardScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             // ── Top Bar ──────────────────────────────────────────────
-            TopBar(userName = userName, onLogout = onLogout)
+            TopBar(userName = userName, onLogout = onLogout, onNavigateToReportes = onNavigateToReportes)
 
             Column(
                 modifier = Modifier
@@ -113,7 +114,7 @@ fun DashboardScreen(
 
 // ── Top Bar ──────────────────────────────────────────────────────────
 @Composable
-fun TopBar(userName: String, onLogout: () -> Unit) {
+fun TopBar(userName: String, onLogout: () -> Unit, onNavigateToReportes: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -157,25 +158,42 @@ fun TopBar(userName: String, onLogout: () -> Unit) {
             }
         }
 
-        // Botón logout
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1A1F2E))
-                .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onLogout() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ExitToApp,
-                contentDescription = "Cerrar sesión",
-                tint = SSColors.TextMuted,
-                modifier = Modifier.size(16.dp)
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1F2E))
+                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onNavigateToReportes() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "📄", fontSize = 16.sp)
+            }
+
+            // Botón logout
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1F2E))
+                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onLogout() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ExitToApp,
+                    contentDescription = "Cerrar sesión",
+                    tint = SSColors.TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 

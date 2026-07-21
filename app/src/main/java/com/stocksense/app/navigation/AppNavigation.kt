@@ -9,11 +9,13 @@ import com.google.firebase.auth.FirebaseAuth
 import com.stocksense.app.ui.dashboard.DashboardScreen
 import com.stocksense.app.ui.login.LoginScreen
 import com.stocksense.app.ui.login.RegisterScreen
+import com.stocksense.app.ui.reportes.ReportesScreen
 
 object AppRoutes {
     const val LOGIN     = "login"
     const val REGISTER  = "register"
     const val DASHBOARD = "dashboard"
+    const val REPORTES  = "reportes"
 }
 
 @Composable
@@ -58,8 +60,13 @@ fun AppNavigation(
                     navController.navigate(AppRoutes.LOGIN) {
                         popUpTo(AppRoutes.DASHBOARD) { inclusive = true }
                     }
-                }
+                },
+                onNavigateToReportes = { navController.navigate(AppRoutes.REPORTES) }
             )
+        }
+
+        composable(AppRoutes.REPORTES) {
+            ReportesScreen(onBack = { navController.popBackStack() })
         }
     }
 }
