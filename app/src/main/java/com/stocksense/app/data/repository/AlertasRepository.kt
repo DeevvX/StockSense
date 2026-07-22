@@ -1,7 +1,9 @@
 package com.stocksense.app.data.repository
 
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.stocksense.app.data.model.Alerta
@@ -21,10 +23,16 @@ class AlertasRepository(
         private const val DIAS_COBERTURA_SUGERIDA = 14
     }
 
+    /** uid de la cuenta actual — las alertas y su historial son propios
+     * de cada cuenta, igual que el inventario del que se calculan. */
+    private val uid: String =
+        FirebaseAuth.getInstance().currentUser?.uid ?: "sin_sesion"
+
     private val rootRef = database.reference
-    private val alertasRef = rootRef.child("alertas")
-    private val movimientosRef = rootRef.child("movimientos")
-    private val productosRef = rootRef.child("productos")
+    private val usuarioRef: DatabaseReference = rootRef.child("usuarios").child(uid)
+    private val alertasRef = usuarioRef.child("alertas")
+    private val movimientosRef = usuarioRef.child("movimientos")
+    private val productosRef = usuarioRef.child("productos")
 
     fun obtenerHistorialAlertas(): Flow<List<Alerta>> = callbackFlow {
         val listener = object : ValueEventListener {
@@ -123,14 +131,7 @@ class AlertasRepository(
         }
     }
 
-    /**
-     * Revisa si ya existe una alerta para este producto registrada en
-     * las últimas 24 horas CON EL MISMO NIVEL DE STOCK. Esto evita
-     * duplicar la misma alerta cada vez que el Dashboard se actualiza,
-     * pero sí permite registrar una nueva entrada en el historial si
-     * el stock sigue cambiando (por ejemplo, sigue bajando con más
-     * salidas, o sube por una entrada administrativa y vuelve a caer).
-     */
+
     private suspend fun existeAlertaActivaPara(productoId: String, stockActual: Int): Boolean {
         return try {
             val hace24Horas = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(24)

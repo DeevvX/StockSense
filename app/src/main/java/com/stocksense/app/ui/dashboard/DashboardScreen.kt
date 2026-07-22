@@ -1,5 +1,8 @@
 package com.stocksense.app.ui.dashboard
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,7 +13,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
@@ -23,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,9 +40,16 @@ import com.stocksense.app.data.model.Producto
 import com.stocksense.app.ui.chatbot.ChatbotEntradaDialog
 import com.stocksense.app.ui.login.SSColors
 import com.stocksense.app.ui.login.bgGradient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/** Avatar genérico para usuarios que no iniciaron sesión con Google (sin foto de perfil). */
+private const val AVATAR_GENERICO_URL = "https://stock.com.pe/assets/media/agentes/imagenJOSEPALACIOSagente.png"
 
 @Composable
 fun DashboardScreen(
@@ -50,7 +61,10 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
-    val userName = auth.currentUser?.displayName?.split(" ")?.firstOrNull() ?: "Usuario"
+    val nombreCompleto = auth.currentUser?.displayName ?: "Usuario"
+    val userName = nombreCompleto.split(" ").firstOrNull() ?: "Usuario"
+    val userEmail = auth.currentUser?.email ?: ""
+    val userPhotoUrl = auth.currentUser?.photoUrl?.toString()
 
     val productos by viewModel.productos.collectAsState()
     val movimientos by viewModel.movimientos.collectAsState()
@@ -62,99 +76,116 @@ fun DashboardScreen(
     val procesandoImagen by procesadorViewModel.procesando.collectAsState()
     val ultimoResultadoIA by procesadorViewModel.ultimoResultado.collectAsState()
 
-    // Estado del diálogo del chatbot de entradas — se abre desde el FAB,
-    // no es una ruta de navegación.
+    // Estado del diálogo del chatbot de entradas — se abre desde el FAB.
     var mostrarChatbotEntrada by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize().background(bgGradient)) {
-        when {
-            isLoading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color = SSColors.Cyan,
-                    strokeWidth = 2.dp
-                )
-            }
-            productos.isEmpty() && movimientos.isEmpty() -> {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    TopBar(
-                        userName = userName,
-                        onLogout = onLogout,
-                        onNavigateToGraficas = onNavigateToGraficas,
-                        onNavigateToReportes = onNavigateToReportes
-                    )
-                    Spacer(Modifier.height(120.dp))
-                    Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.TextMuted, modifier = Modifier.size(52.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text(text = "Sin datos aún\nAgrega productos en Firebase", color = SSColors.TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
-                }
-            }
-            else -> {
-                Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                    TopBar(
-                        userName = userName,
-                        onLogout = onLogout,
-                        onNavigateToGraficas = onNavigateToGraficas,
-                        onNavigateToReportes = onNavigateToReportes
-                    )
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        StatsRow(
-                            totalProductos = viewModel.totalProductos,
-                            totalAlertas = viewModel.totalAlertas,
-                            movimientosHoy = viewModel.movimientosHoy,
-                            onClickAlertas = onNavigateToAlertas
-                        )
-                        StockCard(productos = viewModel.todosLosProductos)
-                        MovimientosCard(movimientos = viewModel.ultimosMovimientos, onVerTodo = onNavigateToHistorial)
-                        IoTStatusCard()
+    // Estado del drawer lateral
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-                        if (procesandoImagen) {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.CyanDim).padding(12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    CircularProgressIndicator(color = SSColors.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                                    Text("Procesando imagen con IA...", fontSize = 11.sp, color = SSColors.Cyan)
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            DrawerContenido(
+                nombreCompleto = nombreCompleto,
+                userEmail = userEmail,
+                userPhotoUrl = userPhotoUrl,
+                onCerrarDrawer = { scope.launch { drawerState.close() } },
+                onNavigateToAlertas = onNavigateToAlertas,
+                onNavigateToHistorial = onNavigateToHistorial,
+                onNavigateToGraficas = onNavigateToGraficas,
+                onNavigateToReportes = onNavigateToReportes,
+                onLogout = onLogout
+            )
+        }
+    ) {
+        Box(modifier = Modifier.fillMaxSize().background(bgGradient)) {
+            when {
+                isLoading -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TopBar(userName = userName, userPhotoUrl = userPhotoUrl) {
+                            scope.launch { drawerState.open() }
+                        }
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = SSColors.Cyan, strokeWidth = 2.dp)
+                        }
+                    }
+                }
+                productos.isEmpty() && movimientos.isEmpty() -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        TopBar(userName = userName, userPhotoUrl = userPhotoUrl) {
+                            scope.launch { drawerState.open() }
+                        }
+                        Spacer(Modifier.height(120.dp))
+                        Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.TextMuted, modifier = Modifier.size(52.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(text = "Sin datos aún\nAgrega productos en Firebase", color = SSColors.TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
+                    }
+                }
+                else -> {
+                    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        TopBar(userName = userName, userPhotoUrl = userPhotoUrl) {
+                            scope.launch { drawerState.open() }
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            StatsRow(
+                                totalProductos = viewModel.totalProductos,
+                                totalAlertas = viewModel.totalAlertas,
+                                movimientosHoy = viewModel.movimientosHoy,
+                                onClickAlertas = onNavigateToAlertas
+                            )
+                            StockCard(productos = viewModel.todosLosProductos)
+                            MovimientosCard(movimientos = viewModel.ultimosMovimientos, onVerTodo = onNavigateToHistorial)
+                            IoTStatusCard()
+
+                            if (procesandoImagen) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.CyanDim).padding(12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        CircularProgressIndicator(color = SSColors.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                        Text("Procesando imagen con IA...", fontSize = 11.sp, color = SSColors.Cyan)
+                                    }
                                 }
                             }
-                        }
 
-                        ultimoResultadoIA?.let { resultado ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp)).padding(12.dp)
-                            ) {
-                                Text(resultado, fontSize = 11.sp, color = SSColors.TextMuted)
+                            ultimoResultadoIA?.let { resultado ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp)).padding(12.dp)
+                                ) {
+                                    Text(resultado, fontSize = 11.sp, color = SSColors.TextMuted)
+                                }
                             }
-                        }
 
-                        Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(16.dp))
+                        }
                     }
                 }
             }
-        }
 
-        // ── Botón flotante para el chatbot de entradas ──────────────
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(20.dp)
-                .size(58.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(SSColors.Cyan, SSColors.Purple)))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { mostrarChatbotEntrada = true },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = "🤖", fontSize = 24.sp)
+            // ── Botón flotante para el chatbot de entradas ──────────────
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp)
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(SSColors.Cyan, SSColors.Purple)))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { mostrarChatbotEntrada = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "🤖", fontSize = 24.sp)
+            }
         }
     }
 
@@ -167,12 +198,7 @@ fun DashboardScreen(
 }
 
 @Composable
-fun TopBar(
-    userName: String,
-    onLogout: () -> Unit,
-    onNavigateToGraficas: () -> Unit,
-    onNavigateToReportes: () -> Unit
-) {
+fun TopBar(userName: String, userPhotoUrl: String?, onAbrirMenu: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().background(Color(0xFF080E1A)).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -191,35 +217,215 @@ fun TopBar(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Botón Reportes
-            Box(
-                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigateToReportes() },
-                contentAlignment = Alignment.Center
-            ) { Text(text = "📄", fontSize = 16.sp) }
-
-            // Botón Gráficas
-            Box(
-                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigateToGraficas() },
-                contentAlignment = Alignment.Center
-            ) { Text(text = "📊", fontSize = 16.sp) }
-
-            // Botón Logout
-            Box(
-                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLogout() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión", tint = SSColors.TextMuted, modifier = Modifier.size(16.dp))
-            }
+        // Botón hamburguesa con la foto de perfil como fondo sutil
+        Box(
+            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(11.dp))
+                .background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(11.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onAbrirMenu() },
+            contentAlignment = Alignment.Center
+        ) {
+            FotoPerfilChica(userPhotoUrl = userPhotoUrl)
         }
     }
 
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, SSColors.CyanGlow, Color.Transparent))))
-    Spacer(Modifier.height(14.dp))
 }
+
+
+@Composable
+private fun FotoPerfilChica(userPhotoUrl: String?) {
+    val bitmap = rememberFotoPerfilBitmap(userPhotoUrl)
+    Box(
+        modifier = Modifier.size(26.dp).clip(CircleShape).background(SSColors.CyanDim),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(bitmap = bitmap.asImageBitmap(), contentDescription = "Perfil", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(text = "☰", fontSize = 13.sp, color = SSColors.Cyan)
+        }
+    }
+}
+
+
+@Composable
+private fun DrawerContenido(
+    nombreCompleto: String,
+    userEmail: String,
+    userPhotoUrl: String?,
+    onCerrarDrawer: () -> Unit,
+    onNavigateToAlertas: () -> Unit,
+    onNavigateToHistorial: () -> Unit,
+    onNavigateToGraficas: () -> Unit,
+    onNavigateToReportes: () -> Unit,
+    onLogout: () -> Unit
+) {
+    ModalDrawerSheet(
+        drawerContainerColor = SSColors.BgDeep,
+        modifier = Modifier.width(300.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            //  Header con foto de perfil
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .background(Brush.linearGradient(listOf(Color(0xFF0D1F35), Color(0xFF111827))))
+                    .padding(horizontal = 22.dp, vertical = 28.dp)
+            ) {
+                Column {
+                    FotoPerfilGrande(userPhotoUrl = userPhotoUrl)
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = nombreCompleto,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = SSColors.Text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (userEmail.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = userEmail,
+                            fontSize = 11.sp,
+                            color = SSColors.TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                            .background(SSColors.CyanDim)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SSColors.Green))
+                            Text(text = "Almacén Principal", fontSize = 9.sp, color = SSColors.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Menú de navegación
+            Column(modifier = Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "NAVEGACIÓN",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SSColors.TextMuted,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp)
+                )
+
+                ItemDrawer(emoji = "🔔", texto = "Alertas") {
+                    onCerrarDrawer(); onNavigateToAlertas()
+                }
+                ItemDrawer(emoji = "🕘", texto = "Historial de movimientos") {
+                    onCerrarDrawer(); onNavigateToHistorial()
+                }
+                ItemDrawer(emoji = "📊", texto = "Gráficas") {
+                    onCerrarDrawer(); onNavigateToGraficas()
+                }
+                ItemDrawer(emoji = "📄", texto = "Reportes") {
+                    onCerrarDrawer(); onNavigateToReportes()
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            HorizontalDivider(color = SSColors.CardBorder, modifier = Modifier.padding(horizontal = 12.dp))
+
+            Column(modifier = Modifier.padding(12.dp)) {
+                ItemDrawer(
+                    emoji = "🚪",
+                    texto = "Cerrar sesión",
+                    colorTexto = Color(0xFFFF5C5C)
+                ) {
+                    onCerrarDrawer(); onLogout()
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun ItemDrawer(
+    emoji: String,
+    texto: String,
+    colorTexto: Color = SSColors.Text,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFF1A1F2E)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = emoji, fontSize = 15.sp)
+        }
+        Text(text = texto, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colorTexto)
+    }
+}
+
+
+@Composable
+private fun rememberFotoPerfilBitmap(userPhotoUrl: String?): Bitmap? {
+    var bitmap by remember(userPhotoUrl) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(userPhotoUrl) {
+        bitmap = withContext(Dispatchers.IO) {
+            try {
+                val urlFinal = if (!userPhotoUrl.isNullOrBlank()) {
+                    // Se pide una versión más grande de la miniatura por defecto de Google.
+                    if (userPhotoUrl.contains("=s")) {
+                        userPhotoUrl.substringBeforeLast("=s") + "=s256-c"
+                    } else {
+                        userPhotoUrl
+                    }
+                } else {
+                    AVATAR_GENERICO_URL
+                }
+                URL(urlFinal).openStream().use { input -> BitmapFactory.decodeStream(input) }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    return bitmap
+}
+
+@Composable
+private fun FotoPerfilGrande(userPhotoUrl: String?) {
+    val bitmap = rememberFotoPerfilBitmap(userPhotoUrl)
+    Box(
+        modifier = Modifier.size(72.dp).clip(CircleShape)
+            .background(Brush.linearGradient(listOf(SSColors.Cyan, SSColors.Purple)))
+            .border(2.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Foto de perfil",
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Genérico: silueta de usuario
+            Text(text = "👤", fontSize = 30.sp)
+        }
+    }
+}
+
+
 
 @Composable
 fun StatsRow(totalProductos: Int, totalAlertas: Int, movimientosHoy: Int, onClickAlertas: () -> Unit) {

@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -58,7 +59,18 @@ sealed class ReporteEstado {
 class ReportesViewModel : ViewModel() {
 
     private val database = FirebaseDatabase.getInstance()
-    private val reportesRef = database.reference.child("reportes")
+
+    /** uid de la cuenta actual — cada cuenta tiene sus propios reportes,
+     * generados a partir de SU propio inventario, sin mezclarse con el
+     * de otras cuentas. */
+    private val uid: String =
+        FirebaseAuth.getInstance().currentUser?.uid ?: "sin_sesion"
+
+    private val usuarioRef = database.reference.child("usuarios").child(uid)
+    private val reportesRef = usuarioRef.child("reportes")
+    private val productosRef = usuarioRef.child("productos")
+    private val movimientosRef = usuarioRef.child("movimientos")
+    private val alertasRef = usuarioRef.child("alertas")
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -121,7 +133,7 @@ class ReportesViewModel : ViewModel() {
                     )
                 }
 
-                // Guardar metadatos en Firebase
+                // Guardar metadatos en Firebase (bajo /usuarios/{uid}/reportes)
                 val metadata = guardarEnFirebase(_mesSeleccionado.value, archivo.name)
 
                 _estado.value = ReporteEstado.Listo(archivo, metadata)
@@ -173,7 +185,7 @@ class ReportesViewModel : ViewModel() {
     fun resetEstado() { _estado.value = ReporteEstado.Idle }
 
     private suspend fun cargarProductos(): List<Producto> {
-        val snapshot = database.reference.child("productos").get().await()
+        val snapshot = productosRef.get().await()
         return snapshot.children.mapNotNull { child ->
             try { child.getValue(Producto::class.java)?.copy(id = child.key ?: "") }
             catch (e: Exception) { null }
@@ -181,7 +193,7 @@ class ReportesViewModel : ViewModel() {
     }
 
     private suspend fun cargarMovimientos(): List<Movimiento> {
-        val snapshot = database.reference.child("movimientos").get().await()
+        val snapshot = movimientosRef.get().await()
         return snapshot.children.mapNotNull { child ->
             try { child.getValue(Movimiento::class.java) }
             catch (e: Exception) { null }
@@ -189,7 +201,7 @@ class ReportesViewModel : ViewModel() {
     }
 
     private suspend fun cargarAlertas(): List<Alerta> {
-        val snapshot = database.reference.child("alertas").get().await()
+        val snapshot = alertasRef.get().await()
         return snapshot.children.mapNotNull { child ->
             try { child.getValue(Alerta::class.java)?.copy(id = child.key ?: "") }
             catch (e: Exception) { null }

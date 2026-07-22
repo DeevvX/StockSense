@@ -1,6 +1,7 @@
 package com.stocksense.app.ui.graficas
 
 import androidx.lifecycle.ViewModel
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -56,6 +57,13 @@ class GraficasViewModel : ViewModel() {
 
     private val database = FirebaseDatabase.getInstance()
 
+    /** uid de la cuenta actual — las gráficas y predicciones se calculan
+     * únicamente sobre el inventario propio de esta cuenta. */
+    private val uid: String =
+        FirebaseAuth.getInstance().currentUser?.uid ?: "sin_sesion"
+
+    private val usuarioRef = database.reference.child("usuarios").child(uid)
+
     private val coloresGrafica = listOf(
         0xFF00D4FF, 0xFF7C3AED, 0xFF00FF9C,
         0xFFFF6B35, 0xFFFF3B5C, 0xFFFFD60A,
@@ -89,7 +97,7 @@ class GraficasViewModel : ViewModel() {
     }
 
     private fun escucharProductos() {
-        database.reference.child("productos")
+        usuarioRef.child("productos")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     productos = snapshot.children.mapNotNull { child ->
@@ -104,7 +112,7 @@ class GraficasViewModel : ViewModel() {
     }
 
     private fun escucharMovimientos() {
-        database.reference.child("movimientos")
+        usuarioRef.child("movimientos")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     movimientos = snapshot.children.mapNotNull { child ->
