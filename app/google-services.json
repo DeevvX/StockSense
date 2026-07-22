@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "1009563458201",
+    "firebase_url": "https://stocksense-4bbaa-default-rtdb.firebaseio.com",
     "project_id": "stocksense-4bbaa",
     "storage_bucket": "stocksense-4bbaa.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.stocksense.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1009563458201-o0tf8gdv7isjvo5u2m58511h7sp4jce6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.stocksense.app",
+            "certificate_hash": "59426f712329f9ba771da84231f3a32044bb312e"
+          }
+        },
+        {
+          "client_id": "1009563458201-losklmlsjvk476al75qge03mq6t8rthc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDfOJWapMbAgzSkWAyPRlksewBBvq9J23E"
@@ -20,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1009563458201-losklmlsjvk476al75qge03mq6t8rthc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

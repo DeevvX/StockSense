@@ -2,4 +2,18 @@
 <resources>
 
     <style name="Theme.StockSense" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Tema exclusivo para la pantalla de Splash -->
+    <style name="Theme.StockSense.Splash" parent="Theme.SplashScreen">
+        <!-- Fondo: BgDeep de SSColors -->
+        <item name="windowSplashScreenBackground">#060D1F</item>
+
+        <!-- Icono del logo (el que armamos para splash) -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_stocksense_splash_icon</item>
+
+        <!-- Sin fondo circular detrás del icono (ya trae su propio color) -->
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+
+        <!-- Tema al que salta la app en cuanto termina el splash -->
+        <item name="postSplashScreenTheme">@style/Theme.StockSense</item>
+    </style>
 </resources>

@@ -1,5 +1,8 @@
 package com.stocksense.app.ui.dashboard
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,7 +13,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
@@ -23,258 +25,449 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.stocksense.app.BuildConfig
+import com.stocksense.app.data.model.Movimiento
+import com.stocksense.app.data.model.Producto
+import com.stocksense.app.ui.chatbot.ChatbotEntradaDialog
 import com.stocksense.app.ui.login.SSColors
+import com.stocksense.app.ui.login.bgGradient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-// ── Modelos de datos de prueba ───────────────────────────────────────
-data class ProductoStock(
-    val nombre: String,
-    val stock: Int,
-    val minimo: Int,
-    val categoria: String
-)
+/** Avatar genérico para usuarios que no iniciaron sesión con Google (sin foto de perfil). */
+private const val AVATAR_GENERICO_URL = "https://stock.com.pe/assets/media/agentes/imagenJOSEPALACIOSagente.png"
 
-data class Movimiento(
-    val hora: String,
-    val producto: String,
-    val tipo: String,
-    val cantidad: Int
-)
-
-val productosMuestra = listOf(
-    ProductoStock("Shampoo 500ml",       8,  10, "Personal"),
-    ProductoStock("Crema Hidratante",    23, 10, "Personal"),
-    ProductoStock("Paracetamol 500mg",   3,  15, "Medicina"),
-    ProductoStock("Alcohol 96°",         12, 10, "Limpieza"),
-    ProductoStock("Gasas Estériles",     5,  20, "Medicina"),
-)
-
-val movimientosMuestra = listOf(
-    Movimiento("09:14", "Shampoo 500ml",       "salida",  -2),
-    Movimiento("08:52", "Crema Hidratante",    "entrada", +10),
-    Movimiento("08:30", "Paracetamol 500mg",  "salida",  -5),
-)
-
-// ── Dashboard Screen ─────────────────────────────────────────────────
 @Composable
 fun DashboardScreen(
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToAlertas: () -> Unit,
+    onNavigateToHistorial: () -> Unit,
+    onNavigateToGraficas: () -> Unit,
+    onNavigateToReportes: () -> Unit,
+    viewModel: DashboardViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
-    val userName = auth.currentUser?.displayName?.split(" ")?.firstOrNull() ?: "Usuario"
+    val nombreCompleto = auth.currentUser?.displayName ?: "Usuario"
+    val userName = nombreCompleto.split(" ").firstOrNull() ?: "Usuario"
+    val userEmail = auth.currentUser?.email ?: ""
+    val userPhotoUrl = auth.currentUser?.photoUrl?.toString()
 
-    val bgGradient = Brush.verticalGradient(
-        colors = listOf(SSColors.BgDeep, SSColors.BgMid, SSColors.BgSurface)
+    val productos by viewModel.productos.collectAsState()
+    val movimientos by viewModel.movimientos.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    val procesadorViewModel: ProcesadorImagenesViewModel = viewModel(
+        factory = ProcesadorImagenesViewModelFactory(BuildConfig.OPENAI_API_KEY)
     )
+    val procesandoImagen by procesadorViewModel.procesando.collectAsState()
+    val ultimoResultadoIA by procesadorViewModel.ultimoResultado.collectAsState()
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bgGradient)
+    // Estado del diálogo del chatbot de entradas — se abre desde el FAB.
+    var mostrarChatbotEntrada by remember { mutableStateOf(false) }
+
+    // Estado del drawer lateral
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            DrawerContenido(
+                nombreCompleto = nombreCompleto,
+                userEmail = userEmail,
+                userPhotoUrl = userPhotoUrl,
+                onCerrarDrawer = { scope.launch { drawerState.close() } },
+                onNavigateToAlertas = onNavigateToAlertas,
+                onNavigateToHistorial = onNavigateToHistorial,
+                onNavigateToGraficas = onNavigateToGraficas,
+                onNavigateToReportes = onNavigateToReportes,
+                onLogout = onLogout
+            )
+        }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            // ── Top Bar ──────────────────────────────────────────────
-            TopBar(userName = userName, onLogout = onLogout)
+        Box(modifier = Modifier.fillMaxSize().background(bgGradient)) {
+            when {
+                isLoading -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TopBar(userName = userName, userPhotoUrl = userPhotoUrl) {
+                            scope.launch { drawerState.open() }
+                        }
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = SSColors.Cyan, strokeWidth = 2.dp)
+                        }
+                    }
+                }
+                productos.isEmpty() && movimientos.isEmpty() -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        TopBar(userName = userName, userPhotoUrl = userPhotoUrl) {
+                            scope.launch { drawerState.open() }
+                        }
+                        Spacer(Modifier.height(120.dp))
+                        Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.TextMuted, modifier = Modifier.size(52.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(text = "Sin datos aún\nAgrega productos en Firebase", color = SSColors.TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
+                    }
+                }
+                else -> {
+                    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        TopBar(userName = userName, userPhotoUrl = userPhotoUrl) {
+                            scope.launch { drawerState.open() }
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            StatsRow(
+                                totalProductos = viewModel.totalProductos,
+                                totalAlertas = viewModel.totalAlertas,
+                                movimientosHoy = viewModel.movimientosHoy,
+                                onClickAlertas = onNavigateToAlertas
+                            )
+                            StockCard(productos = viewModel.todosLosProductos)
+                            MovimientosCard(movimientos = viewModel.ultimosMovimientos, onVerTodo = onNavigateToHistorial)
+                            IoTStatusCard()
 
-            Column(
+                            if (procesandoImagen) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.CyanDim).padding(12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        CircularProgressIndicator(color = SSColors.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                        Text("Procesando imagen con IA...", fontSize = 11.sp, color = SSColors.Cyan)
+                                    }
+                                }
+                            }
+
+                            ultimoResultadoIA?.let { resultado ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp)).padding(12.dp)
+                                ) {
+                                    Text(resultado, fontSize = 11.sp, color = SSColors.TextMuted)
+                                }
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── Botón flotante para el chatbot de entradas ──────────────
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp)
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(SSColors.Cyan, SSColors.Purple)))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { mostrarChatbotEntrada = true },
+                contentAlignment = Alignment.Center
             ) {
-                // ── Stats Row ────────────────────────────────────────
-                StatsRow()
-
-                // ── Stock en tiempo real ─────────────────────────────
-                StockCard()
-
-                // ── Últimos movimientos ──────────────────────────────
-                MovimientosCard()
-
-                // ── IoT Status ───────────────────────────────────────
-                IoTStatusCard()
-
-                Spacer(Modifier.height(16.dp))
+                Text(text = "🤖", fontSize = 24.sp)
             }
         }
     }
+
+    if (mostrarChatbotEntrada) {
+        ChatbotEntradaDialog(
+            openAiApiKey = BuildConfig.OPENAI_API_KEY,
+            onDismiss = { mostrarChatbotEntrada = false }
+        )
+    }
 }
 
-// ── Top Bar ──────────────────────────────────────────────────────────
 @Composable
-fun TopBar(userName: String, onLogout: () -> Unit) {
+fun TopBar(userName: String, userPhotoUrl: String?, onAbrirMenu: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF080E1A))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().background(Color(0xFF080E1A)).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SSColors.CyanDim)
-                    .border(1.dp, SSColors.CyanGlow, RoundedCornerShape(10.dp)),
+                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(SSColors.CyanDim).border(1.dp, SSColors.CyanGlow, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ShoppingCart,
-                    contentDescription = null,
-                    tint = SSColors.Cyan,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(imageVector = Icons.Filled.ShoppingCart, contentDescription = null, tint = SSColors.Cyan, modifier = Modifier.size(20.dp))
             }
             Column {
-                Text(
-                    text = "StockSense",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Black,
-                    color = SSColors.Cyan,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "Hola, $userName",
-                    fontSize = 10.sp,
-                    color = SSColors.TextMuted
-                )
+                Text(text = "StockSense", fontSize = 14.sp, fontWeight = FontWeight.Black, color = SSColors.Cyan, letterSpacing = 1.sp)
+                Text(text = "Hola, $userName", fontSize = 10.sp, color = SSColors.TextMuted)
             }
         }
 
-        // Botón logout
+        // Botón hamburguesa con la foto de perfil como fondo sutil
         Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1A1F2E))
-                .border(1.dp, SSColors.CardBorder, RoundedCornerShape(10.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onLogout() },
+            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(11.dp))
+                .background(Color(0xFF1A1F2E)).border(1.dp, SSColors.CardBorder, RoundedCornerShape(11.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onAbrirMenu() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Filled.ExitToApp,
-                contentDescription = "Cerrar sesión",
-                tint = SSColors.TextMuted,
-                modifier = Modifier.size(16.dp)
-            )
+            FotoPerfilChica(userPhotoUrl = userPhotoUrl)
         }
     }
 
-    // Línea divisora con glow
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(
-                Brush.horizontalGradient(
-                    listOf(Color.Transparent, SSColors.CyanGlow, Color.Transparent)
-                )
-            )
-    )
-
-    Spacer(Modifier.height(14.dp))
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, SSColors.CyanGlow, Color.Transparent))))
 }
 
-// ── Stats Row ─────────────────────────────────────────────────────────
-@Composable
-fun StatsRow() {
-    val stats = listOf(
-        Triple("142", "Productos", SSColors.Cyan),
-        Triple("3",   "Alertas",   Color(0xFFFF3B5C)),
-        Triple("89",  "Hoy",       SSColors.Green),
-    )
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+@Composable
+private fun FotoPerfilChica(userPhotoUrl: String?) {
+    val bitmap = rememberFotoPerfilBitmap(userPhotoUrl)
+    Box(
+        modifier = Modifier.size(26.dp).clip(CircleShape).background(SSColors.CyanDim),
+        contentAlignment = Alignment.Center
     ) {
-        stats.forEach { (valor, label, color) ->
+        if (bitmap != null) {
+            Image(bitmap = bitmap.asImageBitmap(), contentDescription = "Perfil", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(text = "☰", fontSize = 13.sp, color = SSColors.Cyan)
+        }
+    }
+}
+
+
+@Composable
+private fun DrawerContenido(
+    nombreCompleto: String,
+    userEmail: String,
+    userPhotoUrl: String?,
+    onCerrarDrawer: () -> Unit,
+    onNavigateToAlertas: () -> Unit,
+    onNavigateToHistorial: () -> Unit,
+    onNavigateToGraficas: () -> Unit,
+    onNavigateToReportes: () -> Unit,
+    onLogout: () -> Unit
+) {
+    ModalDrawerSheet(
+        drawerContainerColor = SSColors.BgDeep,
+        modifier = Modifier.width(300.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            //  Header con foto de perfil
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(SSColors.Card)
-                    .border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp))
+                modifier = Modifier.fillMaxWidth()
+                    .background(Brush.linearGradient(listOf(Color(0xFF0D1F35), Color(0xFF111827))))
+                    .padding(horizontal = 22.dp, vertical = 28.dp)
+            ) {
+                Column {
+                    FotoPerfilGrande(userPhotoUrl = userPhotoUrl)
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = nombreCompleto,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = SSColors.Text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (userEmail.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = userEmail,
+                            fontSize = 11.sp,
+                            color = SSColors.TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                            .background(SSColors.CyanDim)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SSColors.Green))
+                            Text(text = "Almacén Principal", fontSize = 9.sp, color = SSColors.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Menú de navegación
+            Column(modifier = Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "NAVEGACIÓN",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SSColors.TextMuted,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp)
+                )
+
+                ItemDrawer(emoji = "🔔", texto = "Alertas") {
+                    onCerrarDrawer(); onNavigateToAlertas()
+                }
+                ItemDrawer(emoji = "🕘", texto = "Historial de movimientos") {
+                    onCerrarDrawer(); onNavigateToHistorial()
+                }
+                ItemDrawer(emoji = "📊", texto = "Gráficas") {
+                    onCerrarDrawer(); onNavigateToGraficas()
+                }
+                ItemDrawer(emoji = "📄", texto = "Reportes") {
+                    onCerrarDrawer(); onNavigateToReportes()
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            HorizontalDivider(color = SSColors.CardBorder, modifier = Modifier.padding(horizontal = 12.dp))
+
+            Column(modifier = Modifier.padding(12.dp)) {
+                ItemDrawer(
+                    emoji = "🚪",
+                    texto = "Cerrar sesión",
+                    colorTexto = Color(0xFFFF5C5C)
+                ) {
+                    onCerrarDrawer(); onLogout()
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun ItemDrawer(
+    emoji: String,
+    texto: String,
+    colorTexto: Color = SSColors.Text,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFF1A1F2E)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = emoji, fontSize = 15.sp)
+        }
+        Text(text = texto, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colorTexto)
+    }
+}
+
+
+@Composable
+private fun rememberFotoPerfilBitmap(userPhotoUrl: String?): Bitmap? {
+    var bitmap by remember(userPhotoUrl) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(userPhotoUrl) {
+        bitmap = withContext(Dispatchers.IO) {
+            try {
+                val urlFinal = if (!userPhotoUrl.isNullOrBlank()) {
+                    // Se pide una versión más grande de la miniatura por defecto de Google.
+                    if (userPhotoUrl.contains("=s")) {
+                        userPhotoUrl.substringBeforeLast("=s") + "=s256-c"
+                    } else {
+                        userPhotoUrl
+                    }
+                } else {
+                    AVATAR_GENERICO_URL
+                }
+                URL(urlFinal).openStream().use { input -> BitmapFactory.decodeStream(input) }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    return bitmap
+}
+
+@Composable
+private fun FotoPerfilGrande(userPhotoUrl: String?) {
+    val bitmap = rememberFotoPerfilBitmap(userPhotoUrl)
+    Box(
+        modifier = Modifier.size(72.dp).clip(CircleShape)
+            .background(Brush.linearGradient(listOf(SSColors.Cyan, SSColors.Purple)))
+            .border(2.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Foto de perfil",
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Genérico: silueta de usuario
+            Text(text = "👤", fontSize = 30.sp)
+        }
+    }
+}
+
+
+
+@Composable
+fun StatsRow(totalProductos: Int, totalAlertas: Int, movimientosHoy: Int, onClickAlertas: () -> Unit) {
+    val stats = listOf(
+        Triple(totalProductos.toString(), "Productos", SSColors.Cyan),
+        Triple(totalAlertas.toString(), "Alertas", Color(0xFFFF3B5C)),
+        Triple(movimientosHoy.toString(), "Hoy", SSColors.Green),
+    )
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        stats.forEachIndexed { index, (valor, label, color) ->
+            Box(
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(12.dp))
+                    .then(if (index == 1) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClickAlertas() } else Modifier)
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = valor,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                        color = color
-                    )
-                    Text(
-                        text = label,
-                        fontSize = 10.sp,
-                        color = SSColors.TextMuted
-                    )
+                    Text(text = valor, fontSize = 22.sp, fontWeight = FontWeight.Black, color = color)
+                    Text(text = label, fontSize = 10.sp, color = SSColors.TextMuted)
                 }
             }
         }
     }
 }
 
-// ── Stock Card ────────────────────────────────────────────────────────
 @Composable
-fun StockCard() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SSColors.Card)
-            .border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))
-    ) {
+fun StockCard(productos: List<Producto>) {
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))) {
         Column {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(Color(0xFFFF3B5C), CircleShape)
-                )
-                Text(
-                    text = "STOCK EN TIEMPO REAL",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SSColors.Text,
-                    letterSpacing = 0.5.sp
-                )
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.size(8.dp).background(Color(0xFFFF3B5C), CircleShape))
+                Text(text = "STOCK EN TIEMPO REAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SSColors.Text, letterSpacing = 0.5.sp)
             }
-
             HorizontalDivider(color = SSColors.CardBorder)
-
-            // Productos
-            productosMuestra.forEachIndexed { index, producto ->
-                ProductoRow(producto = producto)
-                if (index < productosMuestra.size - 1) {
-                    HorizontalDivider(color = SSColors.CardBorder)
+            if (productos.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                    Text(text = "Sin productos en el catálogo", fontSize = 12.sp, color = SSColors.TextMuted)
+                }
+            } else {
+                productos.forEachIndexed { index, producto ->
+                    ProductoRow(producto = producto)
+                    if (index < productos.size - 1) HorizontalDivider(color = SSColors.CardBorder)
                 }
             }
         }
@@ -282,222 +475,80 @@ fun StockCard() {
 }
 
 @Composable
-fun ProductoRow(producto: ProductoStock) {
-    val isBajo = producto.stock <= producto.minimo
-    val porcentaje = (producto.stock.toFloat() / (producto.minimo * 2f)).coerceIn(0f, 1f)
-    val barColor = if (isBajo) Color(0xFFFF3B5C) else SSColors.Green
-    val textColor = if (isBajo) Color(0xFFFF3B5C) else SSColors.Text
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = producto.nombre,
-                fontSize = 11.sp,
-                color = textColor,
-                fontWeight = if (isBajo) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${producto.stock} u",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = barColor
-            )
+fun ProductoRow(producto: Producto) {
+    val barColor = if (producto.stockBajo) Color(0xFFFF3B5C) else SSColors.Green
+    val textColor = if (producto.stockBajo) Color(0xFFFF3B5C) else SSColors.Text
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(text = producto.nombre, fontSize = 11.sp, color = textColor, fontWeight = if (producto.stockBajo) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = "${producto.stock} ${producto.unidad}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = barColor)
         }
-
         Spacer(Modifier.height(6.dp))
-
-        // Barra de progreso
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(SSColors.CardBorder)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(porcentaje)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(barColor)
-            )
+        Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(SSColors.CardBorder)) {
+            Box(modifier = Modifier.fillMaxWidth(producto.porcentajeStock).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(barColor))
         }
-
-        if (isBajo) {
+        if (producto.stockBajo) {
             Spacer(Modifier.height(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = null,
-                    tint = Color(0xFFFF3B5C),
-                    modifier = Modifier.size(10.dp)
-                )
-                Text(
-                    text = "STOCK BAJO — mínimo ${producto.minimo} u",
-                    fontSize = 9.sp,
-                    color = Color(0xFFFF3B5C)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFF3B5C), modifier = Modifier.size(10.dp))
+                Text(text = "STOCK BAJO — mínimo ${producto.stockMinimo} ${producto.unidad}", fontSize = 9.sp, color = Color(0xFFFF3B5C))
             }
         }
     }
 }
 
-// ── Movimientos Card ──────────────────────────────────────────────────
 @Composable
-fun MovimientosCard() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SSColors.Card)
-            .border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp))
-            .padding(14.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Text(
-                text = "ÚLTIMOS MOVIMIENTOS",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = SSColors.Text,
-                letterSpacing = 0.5.sp,
-                modifier = Modifier.padding(bottom = 10.dp)
-            )
-
-            movimientosMuestra.forEachIndexed { index, mov ->
-                val isEntrada = mov.tipo == "entrada"
-                val color = if (isEntrada) SSColors.Green else Color(0xFFFF3B5C)
-                val icon = if (isEntrada) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(color.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = color,
-                            modifier = Modifier.size(14.dp)
-                        )
+fun MovimientosCard(movimientos: List<Movimiento>, onVerTodo: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SSColors.Card).border(1.dp, SSColors.CardBorder, RoundedCornerShape(14.dp)).padding(14.dp)) {
+        Column {
+            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "ÚLTIMOS MOVIMIENTOS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SSColors.Text, letterSpacing = 0.5.sp)
+                Text(text = "Ver todo", fontSize = 10.sp, color = SSColors.Cyan, modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onVerTodo() })
+            }
+            if (movimientos.isEmpty()) {
+                Text(text = "Sin movimientos registrados", fontSize = 12.sp, color = SSColors.TextMuted)
+            } else {
+                movimientos.forEachIndexed { index, mov ->
+                    val isEntrada = mov.esEntrada
+                    val color = if (isEntrada) SSColors.Green else Color(0xFFFF3B5C)
+                    val icon = if (isEntrada) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                            Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = mov.productoNombre, fontSize = 11.sp, color = SSColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(text = "${formatearFecha(mov.timestamp)} · ${mov.tipo}", fontSize = 9.sp, color = SSColors.TextMuted)
+                        }
+                        Text(text = "${if (mov.cantidad > 0 && isEntrada) "+" else ""}${mov.cantidad}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
                     }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = mov.producto,
-                            fontSize = 11.sp,
-                            color = SSColors.Text,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${mov.hora} · ${mov.tipo}",
-                            fontSize = 9.sp,
-                            color = SSColors.TextMuted
-                        )
-                    }
-
-                    Text(
-                        text = "${if (mov.cantidad > 0) "+" else ""}${mov.cantidad}",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = color
-                    )
-                }
-
-                if (index < movimientosMuestra.size - 1) {
-                    HorizontalDivider(color = SSColors.CardBorder)
+                    if (index < movimientos.size - 1) HorizontalDivider(color = SSColors.CardBorder)
                 }
             }
         }
     }
 }
 
-// ── IoT Status Card ───────────────────────────────────────────────────
 @Composable
 fun IoTStatusCard() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(Color(0xFF0D1F2D), Color(0xFF0A1628))
-                )
-            )
-            .border(1.dp, SSColors.CyanGlow, RoundedCornerShape(14.dp))
-            .padding(14.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SSColors.CyanDim),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = SSColors.Cyan,
-                    modifier = Modifier.size(22.dp)
-                )
+    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFF0D1F2D), Color(0xFF0A1628)))).border(1.dp, SSColors.CyanGlow, RoundedCornerShape(14.dp)).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(SSColors.CyanDim), contentAlignment = Alignment.Center) {
+                Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = SSColors.Cyan, modifier = Modifier.size(22.dp))
             }
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "ESP32-CAM",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = SSColors.Text
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(SSColors.Green, CircleShape)
-                    )
-                    Text(
-                        text = "Conectado — Almacén Principal",
-                        fontSize = 9.sp,
-                        color = SSColors.Green
-                    )
+                Text(text = "LOGITECH C920", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SSColors.Text)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(modifier = Modifier.size(6.dp).background(SSColors.Green, CircleShape))
+                    Text(text = "Conectado — Almacén Principal", fontSize = 9.sp, color = SSColors.Green)
                 }
             }
-
-            Text(
-                text = "MQTT OK",
-                fontSize = 9.sp,
-                color = SSColors.TextMuted
-            )
+            Text(text = "MQTT OK", fontSize = 9.sp, color = SSColors.TextMuted)
         }
     }
+}
+
+private fun formatearFecha(timestamp: Long): String {
+    return try { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp)) }
+    catch (e: Exception) { "--:--" }
 }
